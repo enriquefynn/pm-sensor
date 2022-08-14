@@ -9,6 +9,7 @@ import logging
 import sqlite3
 import time
 import json
+import urllib
 
 
 class S(BaseHTTPRequestHandler):
@@ -16,6 +17,24 @@ class S(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/html')
         self.end_headers()
+
+    def do_GET(self):
+        self._set_response()
+        parsed_path = urllib.parse.urlparse(self.path)
+        params = parsed_path.query.split('&')
+        output = json.dumps(
+            list(
+                map(
+                    lambda i: {
+                        'timestamp': int(i[0]),
+                        'pm10': int(i[1]),
+                        'pm2_5': int(i[2]),
+                    },
+                    get_pm_values(),
+                )
+            )
+        )
+        self.wfile.write(output.encode())
 
     def do_POST(self):
         content_length = int(
@@ -29,7 +48,7 @@ class S(BaseHTTPRequestHandler):
             post_data.decode('utf-8'),
         )
         post_data = json.loads(post_data)
-        insert_pm_values(cur, post_data['pm10'], post_data['pm2_5'])
+        insert_pm_values(post_data['pm10'], post_data['pm2_5'])
 
         self._set_response()
         self.wfile.write("POST request for {}".format(self.path).encode('utf-8'))
@@ -45,13 +64,17 @@ def create_tables(cur):
     )
 
 
-def insert_pm_values(cur, pm10, pm2_5):
+def insert_pm_values(pm10, pm2_5):
     timestamp = int(time.time())
     cur.execute(
         '''INSERT INTO pm_sensor(timestamp, pm10, pm2_5) VALUES (?, ?, ?)''',
         [timestamp, pm10, pm2_5],
     )
     con.commit()
+
+
+def get_pm_values():
+    return cur.execute('''SELECT timestamp, pm10, pm2_5 from pm_sensor''')
 
 
 con = sqlite3.connect('./pm_sensor.db')
